@@ -17,26 +17,47 @@ type DPS struct {
 	onDamageEvent []func(*DamageEvent)
 }
 
+type Orientation int
+
+const (
+	OrientationNone Orientation = iota
+	OrientationTopLeft
+	OrientationTop
+	OrientationTopRight
+	OrientationRight
+	OrientationBottomRight
+	OrientationBottom
+	OrientationBottomLeft
+	OrientationLeft
+)
+
 type DamageEvent struct {
-	SpellName  string
-	Source     string
-	Target     string
-	Type       string
-	Damage     int
-	Event      time.Time
-	Origin     string
-	IsCritical bool
+	Orientation Orientation
+	SpellName   string
+	Source      string
+	Target      string
+	Type        string
+	Damage      int
+	Event       time.Time
+	Origin      string
+	IsCritical  bool
 }
 
 var (
 	instance              *DPS
 	meleeDamageRegex      = regexp.MustCompile(`\] (.*) for (.*) points of damage.`)
-	directDamageRegex     = regexp.MustCompile(`\] (.*) for (.*) points of non-melee damage.`)
+	directDamageRegex     = regexp.MustCompile(`\] (.*) hit (.*) for (.*) points of non-melee damage. \((.*)\)`)
 	dotDamageRegex        = regexp.MustCompile(`\] (.*) has taken (.*) damage from your (.*).`)
-	directDamageCritRegex = regexp.MustCompile(`\] You deliver a critical blast! \((.*)\)`)
+	directDamageCritRegex = regexp.MustCompile(`\] You deliver a critical blast! \((.*)\) \((.*)\)`)
+	myHealCritRegex       = regexp.MustCompile(`You perform an exceptional heal! \((.*)\)`)
+	myHealRegex           = regexp.MustCompile(`You have healed (.*) for (.*) points.`)
+	healCritRegex         = regexp.MustCompile(`(.*) performs an exceptional heal! \((.*)\)`)
+	healRegex             = regexp.MustCompile(`(.*) has healed (.*) for (.*) points.`)
 	spellNameRegex        = regexp.MustCompile(`You begin casting (.*)\.`)
 	myLastCrit            = 0
+	myLastCritHeal        = 0
 	myLastSpellName       = ""
+	lastOtherHealCritName = ""
 )
 
 func New() (*DPS, error) {
@@ -68,7 +89,11 @@ func (a *DPS) onLine(event time.Time, line string) {
 	a.onMySpellCrit(line)
 	a.onMeleeDPS(event, line)
 	a.onDirectDamageDPS(event, line)
-	a.onDotDamageDPS(event, line)
+	//a.onDotDamageDPS(event, line)
+	a.onMyHealSpellCrit(line)
+	a.onMyHealSpell(event, line)
+	a.onHealSpellCrit(line)
+	a.onHealSpell(event, line)
 
 	a.dumpDPS(event)
 }
@@ -151,6 +176,51 @@ func (a *DPS) onMySpellCast(line string) {
 	myLastSpellName = match[1]
 }
 
+func (a *DPS) onMyHealSpellCrit(line string) {
+	match := myHealCritRegex.FindStringSubmatch(line)
+	if len(match) < 2 {
+		return
+	}
+
+	amount, err := strconv.Atoi(match[1])
+	if err != nil {
+		return
+	}
+
+	myLastCritHeal = amount
+}
+
+func (a *DPS) onMyHealSpell(event time.Time, line string) {
+	match := myHealRegex.FindStringSubmatch(line)
+	if len(match) < 3 {
+		return
+	}
+
+	amount, err := strconv.Atoi(match[2])
+	if err != nil {
+		return
+	}
+
+	damageEvent := &DamageEvent{
+		Source: tracker.PlayerName(),
+		Target: match[1],
+		Type:   "heal",
+		Damage: amount,
+		Event:  event,
+		Origin: "heal",
+	}
+
+	if myLastCritHeal == amount {
+		damageEvent.IsCritical = true
+		myLastCritHeal = 0
+	}
+
+	for _, fn := range a.onDamageEvent {
+		fn(damageEvent)
+	}
+
+}
+
 func (a *DPS) onMySpellCrit(line string) {
 	match := directDamageCritRegex.FindStringSubmatch(line)
 	if len(match) < 2 {
@@ -163,6 +233,54 @@ func (a *DPS) onMySpellCrit(line string) {
 	}
 
 	myLastCrit = amount
+}
+
+func (a *DPS) onHealSpellCrit(line string) {
+
+	match := healCritRegex.FindStringSubmatch(line)
+	if len(match) < 2 {
+		return
+	}
+
+	lastOtherHealCritName = match[1]
+
+}
+
+func (a *DPS) onHealSpell(event time.Time, line string) {
+	match := healRegex.FindStringSubmatch(line)
+	if len(match) < 4 {
+		return
+	}
+
+	amount, err := strconv.Atoi(match[3])
+	if err != nil {
+		return
+	}
+
+	source := match[1]
+	target := match[2]
+	if source == "you" {
+		target = tracker.PlayerName()
+	}
+
+	damageEvent := &DamageEvent{
+		Source: source,
+		Target: target,
+		Type:   "heal",
+		Damage: amount,
+		Event:  event,
+		Origin: "heal",
+	}
+
+	if lastOtherHealCritName == match[1] {
+		damageEvent.IsCritical = true
+		lastOtherHealCritName = ""
+	}
+
+	for _, fn := range a.onDamageEvent {
+		fn(damageEvent)
+	}
+
 }
 
 func (a *DPS) onMeleeDPS(event time.Time, line string) {
@@ -230,29 +348,12 @@ func (a *DPS) onDirectDamageDPS(event time.Time, line string) {
 		return
 	}
 
-	amount, err := strconv.Atoi(match[2])
+	amount, err := strconv.Atoi(match[3])
 	if err != nil {
 		return
 	}
 
-	chunk := match[1]
-
-	pos := 0
-	pickedAdj := ""
-	for _, adj := range adjectives {
-		pos = strings.Index(chunk, adj)
-		if pos <= 0 {
-			continue
-		}
-		pickedAdj = adj
-		break
-	}
-	if pos <= 0 {
-		return
-	}
-
-	source := chunk[:pos]
-	target := chunk[pos+len(pickedAdj):]
+	source := match[1]
 
 	if strings.Contains(source, "`s doppleganger") {
 		fmt.Println("FO?UND DOPPLE:", source)
@@ -260,12 +361,13 @@ func (a *DPS) onDirectDamageDPS(event time.Time, line string) {
 	}
 
 	damageEvent := &DamageEvent{
-		Source: source,
-		Target: target,
-		Type:   strings.TrimSpace(pickedAdj),
-		Damage: amount,
-		Event:  event,
-		Origin: "direct",
+		Source:    source,
+		Type:      "hit",
+		Target:    match[2],
+		Damage:    amount,
+		SpellName: match[4],
+		Event:     event,
+		Origin:    "direct",
 	}
 
 	if source == tracker.PlayerName() {

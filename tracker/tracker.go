@@ -1,6 +1,7 @@
 package tracker
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"strings"
@@ -16,37 +17,41 @@ var (
 )
 
 type Tracker struct {
-	path         string
-	onLineEvent  []func(time.Time, string)
-	onZoneEvent  []func(time.Time, string) // zone name
-	isLiveParse  bool
-	trackerStart time.Time
-	isStarted    bool
-	name         string
+	path          string
+	onLineEvent   []func(time.Time, string)
+	onZoneEvent   []func(time.Time, string) // zone name
+	isLiveParse   bool
+	trackerStart  time.Time
+	isStarted     bool
+	name          string
+	pollCtx       context.Context
+	pollCtxCancel context.CancelFunc
 }
 
 func New(path string) (*Tracker, error) {
 	if instance != nil {
-		return nil, fmt.Errorf("tracker already exists")
-	}
-
-	if !strings.Contains(path, "eqlog_") {
-		return nil, fmt.Errorf("invalid log file (expected eqlog_ prefix)")
+		return nil, fmt.Errorf("tracker already initialized")
 	}
 
 	t := &Tracker{
 		path:         path,
 		trackerStart: time.Now(),
 	}
-
-	pos := strings.Index(path, "eqlog_")
-	name := path[pos+6:]
-	pos = strings.Index(name, "_")
-	if pos > 0 {
-		name = name[:pos]
-	}
 	instance = t
-	instance.name = name
+
+	if path != "" {
+		if !strings.Contains(path, "eqlog_") {
+			return nil, fmt.Errorf("invalid log file (expected eqlog_ prefix)")
+		}
+
+		pos := strings.Index(path, "eqlog_")
+		name := path[pos+6:]
+		pos = strings.Index(name, "_")
+		if pos > 0 {
+			name = name[:pos]
+		}
+		instance.name = name
+	}
 	return t, nil
 }
 
@@ -60,18 +65,62 @@ func (t *Tracker) Start(isFromStart bool) error {
 	}
 	t.isStarted = true
 
+	err := t.watchFile()
+	if err != nil {
+		return fmt.Errorf("watch file: %w", err)
+	}
+
+	return nil
+}
+
+func SetNewPath(path string) error {
+	if instance == nil {
+		return fmt.Errorf("tracker not initialized")
+	}
+
+	t := instance
+	if !strings.Contains(path, "eqlog_") {
+		return fmt.Errorf("invalid log file (expected eqlog_ prefix)")
+	}
+
+	t.path = path
+
+	if !strings.Contains(path, "eqlog_") {
+		return fmt.Errorf("invalid log file (expected eqlog_ prefix)")
+	}
+
+	pos := strings.Index(path, "eqlog_")
+	name := path[pos+6:]
+	pos = strings.Index(name, "_")
+	if pos > 0 {
+		name = name[:pos]
+	}
+	instance.name = name
+
+	err := t.watchFile()
+	if err != nil {
+		return fmt.Errorf("watch file: %w", err)
+	}
+
+	return nil
+}
+
+func (t *Tracker) watchFile() error {
+	if t.path == "" {
+		return nil
+	}
+
+	if t.pollCtx != nil {
+		t.pollCtxCancel()
+	}
+
 	config := tail.Config{
 		Follow:    true,
 		MustExist: true,
 		Poll:      true,
 	}
-	if !isFromStart {
-		config.Location = &tail.SeekInfo{Offset: 0, Whence: 2}
-		fmt.Println("Starting at end of file")
-		t.isLiveParse = true
-	} else {
-		fmt.Println("Starting at beginning of file")
-	}
+	config.Location = &tail.SeekInfo{Offset: 0, Whence: 2}
+	t.isLiveParse = true
 
 	config.Logger = tail.DiscardingLogger
 
@@ -79,12 +128,21 @@ func (t *Tracker) Start(isFromStart bool) error {
 	if err != nil {
 		return fmt.Errorf("tail file %s: %w", t.path, err)
 	}
-	go t.poll(tailer)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.pollCtx = ctx
+	t.pollCtxCancel = cancel
+	go t.poll(ctx, tailer)
 	return nil
 }
 
-func (t *Tracker) poll(tailer *tail.Tail) {
+func (t *Tracker) poll(ctx context.Context, tailer *tail.Tail) {
 	for line := range tailer.Lines {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
 		match := timeRegex.FindStringSubmatch(line.Text)
 		if len(match) < 2 {
 			continue
