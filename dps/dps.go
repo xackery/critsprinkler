@@ -319,6 +319,9 @@ func (a *DPS) onMeleeDPS(event time.Time, line string) {
 		source = tracker.PlayerName()
 	}
 	target := chunk[pos+len(pickedAdj):]
+	if strings.EqualFold(target, "you") {
+		target = tracker.PlayerName()
+	}
 	if strings.Contains(source, "`s doppleganger") {
 		source = strings.ReplaceAll(source, "`s doppleganger", "")
 	}

@@ -2,7 +2,6 @@ package aa
 
 import (
 	"fmt"
-	"os"
 	"regexp"
 	"time"
 
@@ -32,15 +31,15 @@ func New() (*AA, error) {
 		parseStart:    time.Now(),
 	}
 
-	w, err := os.Create("aa.txt")
+	/* w, err := os.Create("aa.txt")
 	if err != nil {
 		return nil, fmt.Errorf("aa create file: %w", err)
 	}
 	defer w.Close()
 
-	w.WriteString("")
+	w.WriteString("") */
 
-	err = tracker.Subscribe(a.onLine)
+	err := tracker.Subscribe(a.onLine)
 	if err != nil {
 		return nil, fmt.Errorf("tracker subscribe: %w", err)
 	}
@@ -82,12 +81,12 @@ func (a *AA) onAA(event time.Time, line string) {
 	aaPerHour := float64(a.totalAAGained) / elapsedTime
 	fmt.Printf("Total AA gained: %d / per hour: %.2f, Time in zone: %0.2f hours, last AA ding: %0.2f minutes\n", a.totalAAGained, aaPerHour, elapsedTime, sinceLastDing)
 
-	w, err := os.Create("aa.txt")
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	defer w.Close()
+	/* 	w, err := os.Create("aa.txt")
+	   	if err != nil {
+	   		fmt.Println(err)
+	   		return
+	   	}
+	   	defer w.Close()
 
-	w.WriteString(fmt.Sprintf("%d AA per hour in %0.2f hours\n", int(aaPerHour), elapsedTime))
+	   	w.WriteString(fmt.Sprintf("%d AA per hour in %0.2f hours\n", int(aaPerHour), elapsedTime)) */
 }

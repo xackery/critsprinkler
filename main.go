@@ -53,25 +53,14 @@ func (c *SafeCounter) IsLocked() bool {
 }
 
 var (
-	cfg         *config.CritSprinklerConfiguration
-	damageEvent = make(chan *dps.DamageEvent, 1000)
-	isLastLeft  = false
-	spellColors = map[string]color.RGBA{
-		"Ice Comet":           {120, 120, 255, 255},
-		"Enticement of Flame": {255, 255, 0, 255},
-		"Lifespike":           {255, 0, 0, 255},
-		"Drain Soul":          {128, 0, 0, 255},
-		"Thunderclap":         {255, 0, 255, 255},
-		"Supernova":           {255, 165, 0, 255},
-		"Word of Souls":       {230, 230, 250, 255},
-	}
-	game         *Game
-	mSprinkler   *systray.MenuItem
-	mSettings    *systray.MenuItem
-	settingsWnd  *walk.MainWindow
-	tooltip      *walk.StatusBarItem
-	prevFilePath string
-	updateTicker *time.Ticker
+	cfg             *config.CritSprinklerConfiguration
+	damageEventChan = make(chan *dps.DamageEvent, 1000)
+	isLastLeft      = false
+	game            *Game
+	mSettings       *systray.MenuItem
+	settingsWnd     *walk.MainWindow
+	prevFilePath    string
+	updateTicker    *time.Ticker
 )
 
 type Popup struct {
@@ -110,13 +99,10 @@ func onReady() {
 	systray.SetTitle("CritSprinkler")
 	systray.SetTooltip("CritSprinkler")
 
-	mSprinkler = systray.AddMenuItem("Sprinkler", "Sprinkler")
-	mSprinkler.Check()
 	mSettings = systray.AddMenuItem("Settings", "Settings")
 	_ = systray.AddMenuItem("Quit", "Quit the whole app")
 
 	// Sets the icon of a menu item. Only available on Mac and Windows.
-	//mSprinkler.SetIcon(icon.Data)
 	//mQuit.SetIcon(icon.Data)
 	//mSettings.SetIcon(icon.Data)
 
@@ -407,7 +393,7 @@ func run() error {
 	game.settingsWindowY = cfg.SettingsY
 	game.settingsWindowW = cfg.SettingsW
 	game.settingsWindowH = cfg.SettingsH
-	defer game.isSettingsBeingChanged.Unlock()
+	game.isSettingsBeingChanged.Unlock()
 
 	t, err := tracker.New(path)
 	if err != nil {
@@ -538,11 +524,6 @@ func StringToUTF16Ptr(s string) *uint16 {
 func sprinklerLoop() {
 	for {
 		select {
-		case <-mSprinkler.ClickedCh:
-			err := toggleSprinkler()
-			if err != nil {
-				fmt.Printf("Error: %v\n", err)
-			}
 		case <-mSettings.ClickedCh:
 			if !settingsWnd.Visible() {
 				fmt.Println("Showing mainWalk")
@@ -568,17 +549,6 @@ func sprinklerLoop() {
 
 		}
 	}
-}
-
-func toggleSprinkler() error {
-	if mSprinkler.Checked() {
-		mSprinkler.Uncheck()
-		fmt.Println("Unchecking Sprinkler")
-		return nil
-	}
-	mSprinkler.Check()
-	fmt.Println("Checking Sprinkler")
-	return nil
 }
 
 func loadFont(path string, size float64) (font.Face, error) {
@@ -610,7 +580,7 @@ func (g *Game) Update() error {
 	}
 
 	select {
-	case event := <-damageEvent:
+	case event := <-damageEventChan:
 		g.spawnPopup(event)
 	default:
 	}
@@ -698,10 +668,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		return
 	}
 
-	if mSprinkler != nil && !mSprinkler.Checked() {
-		return
-	}
-
 	// fushia pink
 	//screen.Fill(color.RGBA{255, 0, 255, 255})
 	//screen.Fill(color.Black)
@@ -737,42 +703,44 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 
 func (g *Game) spawnPopup(event *dps.DamageEvent) {
 
-	fmt.Println(event)
 	isLastLeft = !isLastLeft
 
 	spellColor, ok := spellColors[event.SpellName]
 	if !ok {
-		spellColor = color.RGBA{
+		/* spellColor = color.RGBA{
 			R: uint8(rand.Intn(256)),
 			G: uint8(rand.Intn(256)),
 			B: uint8(rand.Intn(256)),
 			A: 255,
-		}
+		} */
+		fmt.Println("Spell not found", event.SpellName)
+		spellColor = color.RGBA{255, 255, 255, 255}
 	}
 
-	if event.Origin == "melee" {
+	/* if event.Origin == "melee" {
 		spellColor = color.RGBA{180, 180, 180, 255}
 	}
 	if event.Origin == "dot" {
 		spellColor = color.RGBA{0, 150, 0, 255}
-	}
+	} */
 
-	if event.Source == tracker.PlayerName() && event.Target == tracker.PlayerName() {
+	if event.Source == tracker.PlayerName() && event.Target == tracker.PlayerName() && event.Origin == "direct" {
 		spellColor = color.RGBA{255, 0, 0, 255}
 	}
 
 	if event.Origin == "heal" {
-		spellColor = color.RGBA{24, 128, 255, 255}
+		spellColor = color.RGBA{0, 147, 255, 255}
 	}
 
-	if event.Source != tracker.PlayerName() {
+	if event.Target != tracker.PlayerName() && event.Source != tracker.PlayerName() {
 		return
 	}
 
-	if event.Target != tracker.PlayerName() && event.Origin == "heal" {
-		return
+	if event.Target == tracker.PlayerName() && event.Origin != "heal" {
+		spellColor = color.RGBA{128, 0, 0, 255}
 	}
 
+	fmt.Println(event, spellColor)
 	var x float64
 
 	y := float64(g.settingsWindowY)
@@ -834,7 +802,7 @@ func (g *Game) spawnPopup(event *dps.DamageEvent) {
 }
 
 func onDamageEvent(event *dps.DamageEvent) {
-	damageEvent <- event
+	damageEventChan <- event
 }
 
 func onSetPath() {

@@ -23,5 +23,5 @@ go.work.sum
 
 # env file
 .env
-aa.txt
 bin/
+*.txt
