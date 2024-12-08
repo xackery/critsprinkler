@@ -58,9 +58,11 @@ var (
 	isLastLeft      = false
 	game            *Game
 	mSettings       *systray.MenuItem
+	mQuit           *systray.MenuItem
 	settingsWnd     *walk.MainWindow
 	prevFilePath    string
 	updateTicker    *time.Ticker
+	setPathButton   *walk.PushButton
 )
 
 type Popup struct {
@@ -100,7 +102,7 @@ func onReady() {
 	systray.SetTooltip("CritSprinkler")
 
 	mSettings = systray.AddMenuItem("Settings", "Settings")
-	_ = systray.AddMenuItem("Quit", "Quit the whole app")
+	mQuit = systray.AddMenuItem("Quit", "Quit the whole app")
 
 	// Sets the icon of a menu item. Only available on Mac and Windows.
 	//mQuit.SetIcon(icon.Data)
@@ -195,12 +197,13 @@ func run() error {
 				},
 			},
 			cpl.Label{
-				Text:      "Drag this window\nand test the sprinkles",
+				Text:      "Drag this window\nand test the sprinkles\non close it saves\nquit via systray",
 				Alignment: cpl.AlignHCenterVCenter,
 			},
 			cpl.PushButton{
 				Text:      "Set EQ Log",
 				OnClicked: onSetPath,
+				AssignTo:  &setPathButton,
 			},
 			cpl.PushButton{
 				Text:    "Crit Randomly",
@@ -340,7 +343,7 @@ func run() error {
 			game.isSettingsBeingChanged.Unlock()
 		},
 
-		Visible: false,
+		Visible: cfg.LogPath == "",
 	}
 
 	err = cmw.Create()
@@ -370,10 +373,14 @@ func run() error {
 		if code != 0 {
 			fmt.Printf("mainWalk Error: %v\n", code)
 		}
+		DisableMinMaxTitle(settingsWnd.Handle())
 
 		if cfg.LogPath == "" {
-			settingsWnd.SetVisible(true)
-			onSetPath()
+
+			setPathButton.Button.Clicked()
+			win.SetForegroundWindow(settingsWnd.Handle())
+			win.SetActiveWindow(settingsWnd.Handle())
+
 		}
 
 	}()
@@ -532,6 +539,9 @@ func sprinklerLoop() {
 			}
 			win.SetForegroundWindow(settingsWnd.Handle())
 			win.SetActiveWindow(settingsWnd.Handle())
+		case <-mQuit.ClickedCh:
+			systray.Quit()
+			os.Exit(0)
 		case <-updateTicker.C:
 
 			if win.GetActiveWindowTitle() != "Critsprinkler Settings" &&
