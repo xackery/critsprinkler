@@ -649,21 +649,23 @@ func (g *Game) Update() error {
 
 	return nil
 }
-
-func (g *Game) randomSpawnX(minX, maxX, tolerance, attempts int) float64 {
+func (g *Game) randomSpawnX(minX, maxX, tolerance, maxAttempts int) float64 {
 	if minX == 0 && maxX == 0 {
 		return 0
 	}
-	x := rand.Intn(maxX-minX) + minX
-	if x < int(g.lastSpawnX)+tolerance && x > int(g.lastSpawnX)-tolerance && attempts < 10 {
-		tolerance = tolerance / 2
+	for attempts := 0; attempts < maxAttempts; attempts++ {
+		x := rand.Intn(maxX-minX) + minX
+		if x < int(g.lastSpawnX)-tolerance || x > int(g.lastSpawnX)+tolerance {
+			return float64(x)
+		}
+		// Reduce tolerance to increase chances of finding a valid spawn point.
+		tolerance /= 2
 		if tolerance < 1 {
 			tolerance = 1
 		}
-		return g.randomSpawnX(minX, maxX, tolerance, attempts+1)
 	}
-	return float64(x)
-
+	// If no valid value is found within maxAttempts, return a default value.
+	return float64(minX + rand.Intn(maxX-minX))
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
@@ -723,7 +725,7 @@ func (g *Game) spawnPopup(event *dps.DamageEvent) {
 			B: uint8(rand.Intn(256)),
 			A: 255,
 		} */
-		fmt.Println("Spell not found", event.SpellName)
+		//fmt.Println("Spell not found", event.SpellName)
 		spellColor = color.RGBA{255, 255, 255, 255}
 	}
 
