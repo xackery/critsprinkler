@@ -196,9 +196,13 @@ func run() error {
 					},
 				},
 			},
-			cpl.Label{
-				Text:      "Drag this window\nand test the sprinkles\non close it saves\nquit via systray",
-				Alignment: cpl.AlignHCenterVCenter,
+			cpl.LinkLabel{
+				OnLinkActivated: func(link *walk.LinkLabelLink) {
+					urlPtr := syscall.StringToUTF16Ptr(link.URL())
+					verbPtr := syscall.StringToUTF16Ptr("open")
+					win.ShellExecute(0, verbPtr, urlPtr, nil, nil, win.SW_SHOWNORMAL)
+				},
+				Text: `<a id="youtube" href="https://youtu.be/WOtdjXEXnF8">Watch Walkthrough</a>`,
 			},
 			cpl.PushButton{
 				Text:      "Set EQ Log",
