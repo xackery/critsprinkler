@@ -1,0 +1,38 @@
+{
+    "FixedFileInfo": {
+      "FileVersion": {
+        "Major": 0,
+        "Minor": 1,
+        "Patch": 1,
+        "Build": 1
+      },
+      "ProductVersion": {
+        "Major": 0,
+        "Minor": 1,
+        "Patch": 1,
+        "Build": 1
+      },
+      "FileFlagsMask": "3f",
+      "FileFlags": "00",
+      "FileOS": "040004",
+      "FileType": "01",
+      "FileSubtype": "00"
+    },
+    "StringFileInfo": {
+      "Comments": "Critsprinkler",
+      "CompanyName": "Shin's Shop",
+      "FileDescription": "Critsprinkler",
+      "FileVersion": "0.1.1.1",
+      "InternalName": "critsprinkler.exe",
+      "LegalCopyright": "Copyright © Shin's Shop 2024",
+      "OriginalFilename": "critsprinkler.exe",
+      "ProductName": "critsprinkler",
+      "ProductVersion": "0.1.1.1"
+    },
+    "VarFileInfo": {
+      "Translation": {
+        "LangID": "0409",
+        "CharsetID": "04B0"
+      }
+    }
+  }
