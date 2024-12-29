@@ -561,9 +561,12 @@ func (a *DPS) onMeleeMiss(event time.Time, line string) {
 		missName = "miss"
 	} else {
 		missName = ""
-		opts := []string{"parry", "dodge", "block", "shield block", "riposte"}
+		opts := []string{"parry", "dodge", "block", "shield block", "riposte", "absorb"}
 		for _, opt := range opts {
 			if strings.Contains(missName, opt) {
+				if opt == "absorb" {
+					missName = "rune"
+				}
 				missName = opt
 				break
 			}

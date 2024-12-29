@@ -175,11 +175,11 @@ func LoadCritSprinklerConfig() (*CritSprinklerConfiguration, error) {
 			MeleeMissOut:          defaultRect,
 			MeleeMissOutColor:     color.RGBA{R: 255, G: 0, B: 0, A: 200},
 			MeleeMissOutDirection: common.DirectionDownLeft,
-			MeleeMissOutIsEnabled: true,
+			MeleeMissOutIsEnabled: false,
 			MeleeMissIn:           defaultRect,
 			MeleeMissInColor:      color.RGBA{R: 255, G: 255, B: 255, A: 200},
 			MeleeMissInDirection:  common.DirectionDownRight,
-			MeleeMissInIsEnabled:  true,
+			MeleeMissInIsEnabled:  false,
 
 			GlobalHitOut:  defaultRect,
 			GlobalHitIn:   defaultRect,

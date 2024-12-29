@@ -4,7 +4,6 @@ import (
 	_ "embed"
 	"fmt"
 	"image"
-	"image/color"
 	"image/png"
 	"os"
 	"syscall"
@@ -276,7 +275,8 @@ func (g *Game) Update() error {
 
 func (g *Game) Draw(screen *ebiten.Image) {
 	// Clear screen
-	screen.Fill(color.RGBA{0, 0, 0, 0})
+	//screen.Fill(color.RGBA{0, 0, 0, 0})
+	screen.Clear()
 
 	//	if g.IsEditMode() {
 	if g.IsEditMode() { // || win.GetActiveWindowTitle() == "EverQuest" {

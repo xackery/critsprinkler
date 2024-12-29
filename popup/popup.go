@@ -10,6 +10,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
 	"github.com/xackery/critsprinkler/common"
 	"github.com/xackery/critsprinkler/config"
+	"github.com/xackery/critsprinkler/tracker"
 	"golang.org/x/exp/rand"
 )
 
@@ -578,6 +579,10 @@ func Spawn(event *common.DamageEvent) error {
 	//  0
 	// 100
 	// -50, 50
+
+	if event.Source != tracker.PlayerName() && event.Target != tracker.PlayerName() {
+		return nil
+	}
 
 	vx := float64(0)
 	vy := float64(-0.5 - rand.Float64() - (rand.Float64() / 2))
