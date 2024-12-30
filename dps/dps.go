@@ -8,18 +8,18 @@ import (
 	"time"
 
 	"github.com/xackery/critsprinkler/common"
+	"github.com/xackery/critsprinkler/reporter"
 	"github.com/xackery/critsprinkler/tracker"
 )
 
-type DPS struct {
-	parseStart    time.Time
-	zone          string
-	damageEvents  map[string][]*common.DamageEvent
+var (
+	zone          = "Unknown"
+	parseStart    = time.Now()
+	damageEvents  = make(map[string][]*common.DamageEvent)
 	onDamageEvent []func(*common.DamageEvent)
-}
+)
 
 var (
-	instance              *DPS
 	myLastSpellCrit       = 0
 	myLastSpellCritName   = ""
 	myLastSpellName       = ""
@@ -28,68 +28,61 @@ var (
 	lastOtherHealCritName = ""
 )
 
-func New() (*DPS, error) {
-	if instance != nil {
-		return nil, fmt.Errorf("dps already exists")
-	}
-	a := &DPS{
-		zone:         "Unknown",
-		parseStart:   time.Now(),
-		damageEvents: make(map[string][]*common.DamageEvent),
-	}
-
-	err := tracker.Subscribe(a.onLine)
+func New() error {
+	err := tracker.Subscribe(onLine)
 	if err != nil {
-		return nil, fmt.Errorf("tracker subscribe: %w", err)
+		return fmt.Errorf("tracker subscribe: %w", err)
 	}
 
-	err = tracker.SubscribeToZoneEvent(a.onZone)
+	err = tracker.SubscribeToZoneEvent(onZone)
 	if err != nil {
-		return nil, fmt.Errorf("tracker subscribe to zone: %w", err)
+		return fmt.Errorf("tracker subscribe to zone: %w", err)
 	}
-
-	instance = a
-	return a, nil
+	return nil
 }
 
-func (a *DPS) onLine(event time.Time, line string) {
-	a.onMySpellCrit(line)
-	//a.onMyMelee(event, line)
-	a.onMyMeleeCrit(line)
-	a.onMyMeleeSlay(line)
-	a.onMyMeleeFrenzy(event, line)
-	a.onMyMeleeCleaving(line)
-	a.onMelee(event, line)
-	a.onMeleeMiss(event, line)
-	a.onMyMeleeMiss(event, line)
-	a.onSpell(event, line)
-	a.onMyHealCrit(line)
-	a.onHealCrit(line)
-	a.onHeal(event, line)
-	a.onRune(event, line)
-	a.dumpDPS(event)
+func onLine(event time.Time, line string) {
+	onMySpellCrit(line)
+	//onMyMelee(event, line)
+	onMyMeleeCrit(line)
+	onMyMeleeSlay(line)
+	onMyMeleeFrenzy(event, line)
+	onMyMeleeCleaving(line)
+	onMelee(event, line)
+	onMeleeMiss(event, line)
+	onMyMeleeMiss(event, line)
+	onSpellCast(event, line)
+	onSpellInterrupt(event, line)
+	onSpellFizzle(event, line)
+	onSpellHit(event, line)
+	onMyHealCrit(line)
+	onHealCrit(line)
+	onHeal(event, line)
+	onRune(event, line)
+	onDeath(event, line)
+	dumpDPS(event)
 }
 
-func (a *DPS) onZone(event time.Time, zoneName string) {
-	a.zone = zoneName
+func onZone(event time.Time, zoneName string) {
+	zone = zoneName
 
-	a.dumpDPS(event)
+	dumpDPS(event)
 }
 
-func (a *DPS) dumpDPS(event time.Time) {
-	//dpsPerSec := float64(a.totalDPSGained) / time.Since(a.parseStart).Seconds()
+func dumpDPS(event time.Time) {
+	//dpsPerSec := float64(totalDPSGained) / time.Since(parseStart).Seconds()
 	//dpsPerHour := dpsPerSec * 3600
 
-	if a.zone == "The Bazaar" {
+	if zone == "The Bazaar" {
 		return
 	}
 
-	if len(a.damageEvents) == 0 {
+	if len(damageEvents) == 0 {
 		//fmt.Println("No damage events to report")
 		return
 	}
 
-	//fmt.Println(len(a.damageEvents), "events to report")
+	//fmt.Println(len(damageEvents), "events to report")
 	type dpsReport struct {
 		total    int
 		maxMelee int
@@ -100,7 +93,7 @@ func (a *DPS) dumpDPS(event time.Time) {
 
 	tmpDamageEvents := make(map[string][]*common.DamageEvent)
 
-	for name, dmgEvents := range a.damageEvents {
+	for name, dmgEvents := range damageEvents {
 
 		for _, dmgEvent := range dmgEvents {
 
@@ -139,13 +132,13 @@ func (a *DPS) dumpDPS(event time.Time) {
 		}
 	}
 
-	a.damageEvents = tmpDamageEvents
+	damageEvents = tmpDamageEvents
 
-	//fmt.Println(len(a.damageEvents), "events to report after filtering")
+	//fmt.Println(len(damageEvents), "events to report after filtering")
 
 }
 
-func (a *DPS) onMyHealCrit(line string) {
+func onMyHealCrit(line string) {
 	match, ok := easyParse(line, `\] You perform an exceptional heal! \((.*)\)`, 1)
 	if !ok {
 		return
@@ -159,7 +152,7 @@ func (a *DPS) onMyHealCrit(line string) {
 	myLastHealCrit = amount
 }
 
-func (a *DPS) onMySpellCrit(line string) {
+func onMySpellCrit(line string) {
 	match, ok := easyParse(line, `\] You deliver a critical blast! \((.*)\) \((.*)\)`, 2)
 	if !ok {
 		return
@@ -174,7 +167,7 @@ func (a *DPS) onMySpellCrit(line string) {
 	myLastSpellName = match[1]
 }
 
-func (a *DPS) onMyMeleeCrit(line string) {
+func onMyMeleeCrit(line string) {
 	match, ok := easyParse(line, `\] (.*) scores a critical hit! \((.*)\)`, 2)
 	if !ok {
 		return
@@ -193,7 +186,7 @@ func (a *DPS) onMyMeleeCrit(line string) {
 	myLastMeleeCrit = amount
 }
 
-func (a *DPS) onMyMeleeSlay(line string) {
+func onMyMeleeSlay(line string) {
 	match, ok := easyParse(line, `\] (.*) holy blade cleanses (.) target!\((.*)\)`, 3)
 	if !ok {
 		return
@@ -211,7 +204,7 @@ func (a *DPS) onMyMeleeSlay(line string) {
 	myLastMeleeCrit = amount
 }
 
-func (a *DPS) onMyMeleeFrenzy(event time.Time, line string) {
+func onMyMeleeFrenzy(event time.Time, line string) {
 	match, ok := easyParse(line, `\] You frenzy on (.*) for (.*) points of damage.`, 2)
 	if !ok {
 		return
@@ -245,12 +238,12 @@ func (a *DPS) onMyMeleeFrenzy(event time.Time, line string) {
 		myLastMeleeCrit = 0
 	}
 
-	for _, fn := range a.onDamageEvent {
+	for _, fn := range onDamageEvent {
 		fn(damageEvent)
 	}
 }
 
-func (a *DPS) onMyMeleeCleaving(line string) {
+func onMyMeleeCleaving(line string) {
 	match, ok := easyParse(line, `\] (.*) lands a Cleaving Blow! \((.*)\)`, 2)
 	if !ok {
 		return
@@ -268,7 +261,7 @@ func (a *DPS) onMyMeleeCleaving(line string) {
 	myLastMeleeCrit = amount
 }
 
-func (a *DPS) onHealCrit(line string) {
+func onHealCrit(line string) {
 	match, ok := easyParse(line, `\] (.*) performs an exceptional heal! \((.*)\)`, 2)
 	if !ok {
 		return
@@ -287,7 +280,7 @@ func (a *DPS) onHealCrit(line string) {
 
 }
 
-func (a *DPS) onHeal(event time.Time, line string) {
+func onHeal(event time.Time, line string) {
 	match, ok := easyParse(line, `\] (.*) has healed (.*) for (.*) points of damage. \((.*)\)`, 4)
 	if !ok {
 		return
@@ -330,13 +323,13 @@ func (a *DPS) onHeal(event time.Time, line string) {
 		myLastHealCrit = 0
 	}
 
-	for _, fn := range a.onDamageEvent {
+	for _, fn := range onDamageEvent {
 		fn(damageEvent)
 	}
 
 }
 
-func (a *DPS) onRune(event time.Time, line string) {
+func onRune(event time.Time, line string) {
 	match, ok := easyParse(line, `\] (.*) has shielded (.*) from (.*) points of damage. \((.*)\)`, 4)
 	if !ok {
 		return
@@ -370,12 +363,12 @@ func (a *DPS) onRune(event time.Time, line string) {
 		SpellName: match[3],
 	}
 
-	for _, fn := range a.onDamageEvent {
+	for _, fn := range onDamageEvent {
 		fn(damageEvent)
 	}
 }
 
-func (a *DPS) onMyMelee(event time.Time, line string) {
+func onMyMelee(event time.Time, line string) {
 	match, ok := easyParse(line, `\] You (.*) for (.*) points of damage.`, 2)
 	if !ok {
 		return
@@ -407,12 +400,6 @@ func (a *DPS) onMyMelee(event time.Time, line string) {
 	if strings.EqualFold(target, "you") {
 		target = tracker.PlayerName()
 	}
-	if strings.Contains(source, "`s doppleganger") {
-		source = strings.ReplaceAll(source, "`s doppleganger", "")
-	}
-	if strings.Contains(target, "`s doppleganger") {
-		target = strings.ReplaceAll(target, "`s doppleganger", "")
-	}
 
 	category := common.PopupCategoryMeleeHitOut
 	damageEvent := &common.DamageEvent{
@@ -425,24 +412,33 @@ func (a *DPS) onMyMelee(event time.Time, line string) {
 		Origin:   "melee",
 	}
 
+	isCrit := false
 	if source == tracker.PlayerName() && amount >= myLastMeleeCrit && myLastMeleeCrit > 0 {
 		damageEvent.Category = common.PopupCategoryMeleeCritOut
 		myLastMeleeCrit = 0
+		isCrit = true
 	}
 
-	for _, fn := range a.onDamageEvent {
+	for _, fn := range onDamageEvent {
 		fn(damageEvent)
 	}
 
-	_, ok = a.damageEvents[damageEvent.Source]
+	_, ok = damageEvents[damageEvent.Source]
 	if !ok {
-		a.damageEvents[damageEvent.Source] = make([]*common.DamageEvent, 0)
+		damageEvents[damageEvent.Source] = make([]*common.DamageEvent, 0)
 	}
 
-	a.damageEvents[damageEvent.Source] = append(a.damageEvents[damageEvent.Source], damageEvent)
+	damageEvents[damageEvent.Source] = append(damageEvents[damageEvent.Source], damageEvent)
+
+	reporter.AttackEvent(source, 0, target, 0, &reporter.Attack{
+		Event:   event,
+		HitName: pickedAdj,
+		Value:   amount,
+		IsCrit:  isCrit,
+	})
 }
 
-func (a *DPS) onMelee(event time.Time, line string) {
+func onMelee(event time.Time, line string) {
 	match, ok := easyParse(line, `\] (.*) for (.*) points of damage.`, 2)
 	if !ok {
 		return
@@ -506,24 +502,33 @@ func (a *DPS) onMelee(event time.Time, line string) {
 		Origin:   "melee",
 	}
 
+	isCrit := false
 	if source == tracker.PlayerName() && amount >= myLastMeleeCrit && myLastMeleeCrit > 0 {
 		damageEvent.Category = common.PopupCategoryMeleeCritOut
 		myLastMeleeCrit = 0
+		isCrit = true
 	}
 
-	for _, fn := range a.onDamageEvent {
+	for _, fn := range onDamageEvent {
 		fn(damageEvent)
 	}
 
-	_, ok = a.damageEvents[damageEvent.Source]
+	_, ok = damageEvents[damageEvent.Source]
 	if !ok {
-		a.damageEvents[damageEvent.Source] = make([]*common.DamageEvent, 0)
+		damageEvents[damageEvent.Source] = make([]*common.DamageEvent, 0)
 	}
 
-	a.damageEvents[damageEvent.Source] = append(a.damageEvents[damageEvent.Source], damageEvent)
+	damageEvents[damageEvent.Source] = append(damageEvents[damageEvent.Source], damageEvent)
+
+	reporter.AttackEvent(source, 0, target, 0, &reporter.Attack{
+		Event:   event,
+		HitName: hitAdj,
+		Value:   amount,
+		IsCrit:  isCrit,
+	})
 }
 
-func (a *DPS) onMeleeMiss(event time.Time, line string) {
+func onMeleeMiss(event time.Time, line string) {
 	match, ok := easyParse(line, `\] (.*) tries to (.*), but (.*)!`, 3)
 	if !ok {
 		return
@@ -603,19 +608,43 @@ func (a *DPS) onMeleeMiss(event time.Time, line string) {
 		Origin:   "melee",
 	}
 
-	for _, fn := range a.onDamageEvent {
+	for _, fn := range onDamageEvent {
 		fn(damageEvent)
 	}
 
-	// _, ok = a.damageEvents[damageEvent.Source]
+	// _, ok = damageEvents[damageEvent.Source]
 	// if !ok {
-	// 	a.damageEvents[damageEvent.Source] = make([]*common.DamageEvent, 0)
+	// 	damageEvents[damageEvent.Source] = make([]*common.DamageEvent, 0)
 	// }
 
-	// a.damageEvents[damageEvent.Source] = append(a.damageEvents[damageEvent.Source], damageEvent)
+	// damageEvents[damageEvent.Source] = append(damageEvents[damageEvent.Source], damageEvent)
+
+	result := reporter.AttackMiss
+	switch missName {
+	case "parry":
+		result = reporter.AttackParry
+	case "dodge":
+		result = reporter.AttackDodge
+	case "block":
+		result = reporter.AttackBlock
+	case "shield block":
+		result = reporter.AttackShieldBlock
+	case "riposte":
+		result = reporter.AttackRiposte
+	case "absorb":
+		result = reporter.AttackAbsorb
+	}
+
+	reporter.AttackEvent(source, 0, target, 0, &reporter.Attack{
+		Event:   event,
+		HitName: hitAdj,
+		Value:   0,
+		Result:  result,
+		IsCrit:  false,
+	})
 }
 
-func (a *DPS) onMyMeleeMiss(event time.Time, line string) {
+func onMyMeleeMiss(event time.Time, line string) {
 	match, ok := easyParse(line, `\] You try to (.*), but (.*)!`, 2)
 	if !ok {
 		return
@@ -676,19 +705,72 @@ func (a *DPS) onMyMeleeMiss(event time.Time, line string) {
 		Origin:   "melee",
 	}
 
-	for _, fn := range a.onDamageEvent {
+	for _, fn := range onDamageEvent {
 		fn(damageEvent)
 	}
 
-	// _, ok = a.damageEvents[damageEvent.Source]
+	// _, ok = damageEvents[damageEvent.Source]
 	// if !ok {
-	// 	a.damageEvents[damageEvent.Source] = make([]*common.DamageEvent, 0)
+	// 	damageEvents[damageEvent.Source] = make([]*common.DamageEvent, 0)
 	// }
 
-	// a.damageEvents[damageEvent.Source] = append(a.damageEvents[damageEvent.Source], damageEvent)
+	// damageEvents[damageEvent.Source] = append(damageEvents[damageEvent.Source], damageEvent)
 }
 
-func (a *DPS) onSpell(event time.Time, line string) {
+func onSpellCast(event time.Time, line string) {
+	match, ok := easyParse(line, `\] You begin to cast (.*).`, 1)
+	if !ok {
+		return
+	}
+
+	myLastSpellName = match[0]
+}
+
+func onSpellInterrupt(event time.Time, line string) {
+	_, ok := easyParse(line, `\] Your spell is interrupted.`, 0)
+	if !ok {
+		return
+	}
+
+	reporter.CastEvent(tracker.PlayerName(), 0, &reporter.Cast{
+		Event:     event,
+		SpellName: myLastSpellName,
+		Result:    reporter.CastInterrupted,
+		Value:     0,
+		IsCrit:    false,
+	})
+	myLastSpellName = ""
+}
+
+func onDeath(event time.Time, line string) {
+	match, ok := easyParse(line, `\] (.*) has been killed by (.*)!`, 2)
+	if !ok {
+		return
+	}
+
+	source := match[1]
+	target := match[0]
+
+	reporter.DeathEvent(source, 0, target, 0, event)
+}
+
+func onSpellFizzle(event time.Time, line string) {
+	_, ok := easyParse(line, `\] Your spell fizzles!`, 0)
+	if !ok {
+		return
+	}
+
+	reporter.CastEvent(tracker.PlayerName(), 0, &reporter.Cast{
+		Event:     event,
+		SpellName: myLastSpellName,
+		Result:    reporter.CastFizzle,
+		Value:     0,
+		IsCrit:    false,
+	})
+	myLastSpellName = ""
+}
+
+func onSpellHit(event time.Time, line string) {
 	match, ok := easyParse(line, `\] (.*) hit (.*) for (.*) points of non-melee damage. \((.*)\)`, 4)
 	if !ok {
 		return
@@ -702,13 +784,6 @@ func (a *DPS) onSpell(event time.Time, line string) {
 	source := match[0]
 	target := match[1]
 
-	if strings.Contains(source, "`s doppleganger") {
-		source = strings.ReplaceAll(source, "`s doppleganger", "")
-	}
-
-	if strings.Contains(target, "`s doppleganger") {
-		target = strings.ReplaceAll(target, "`s doppleganger", "")
-	}
 	damageEvent := &common.DamageEvent{
 		Category:  common.PopupCategorySpellHitOut,
 		Source:    source,
@@ -723,30 +798,37 @@ func (a *DPS) onSpell(event time.Time, line string) {
 	if source == tracker.PlayerName() {
 		damageEvent.Category = common.PopupCategorySpellHitOut
 	}
+	isCrit := false
 	if source == tracker.PlayerName() && myLastSpellCrit == amount {
 		damageEvent.Category = common.PopupCategorySpellCritOut
 		myLastSpellCrit = 0
+		isCrit = true
 	}
 	if target == tracker.PlayerName() {
 		damageEvent.Category = common.PopupCategorySpellHitIn
 	}
-	for _, fn := range a.onDamageEvent {
+	for _, fn := range onDamageEvent {
 		fn(damageEvent)
 	}
 
-	_, ok = a.damageEvents[damageEvent.Source]
+	_, ok = damageEvents[damageEvent.Source]
 	if !ok {
-		a.damageEvents[damageEvent.Source] = make([]*common.DamageEvent, 0)
+		damageEvents[damageEvent.Source] = make([]*common.DamageEvent, 0)
 	}
 
-	a.damageEvents[damageEvent.Source] = append(a.damageEvents[damageEvent.Source], damageEvent)
+	damageEvents[damageEvent.Source] = append(damageEvents[damageEvent.Source], damageEvent)
+	reporter.CastEvent(source, 0, &reporter.Cast{
+		Event:     event,
+		SpellName: match[3],
+		Result:    reporter.CastSuccess,
+		Value:     amount,
+		IsCrit:    isCrit,
+	})
+
 }
 
 func SubscribeToDamageEvent(fn func(*common.DamageEvent)) error {
-	if instance == nil {
-		return fmt.Errorf("dps not initialized")
-	}
-	instance.onDamageEvent = append(instance.onDamageEvent, fn)
+	onDamageEvent = append(onDamageEvent, fn)
 	return nil
 }
 

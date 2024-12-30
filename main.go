@@ -78,7 +78,7 @@ func run() error {
 		return fmt.Errorf("aa: %w", err)
 	}
 
-	_, err = dps.New()
+	err = dps.New()
 	if err != nil {
 		return fmt.Errorf("dps: %w", err)
 	}
