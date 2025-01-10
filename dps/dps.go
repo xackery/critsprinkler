@@ -562,25 +562,22 @@ func onMeleeMiss(event time.Time, line string) {
 	target := strings.TrimSpace(strings.Join(chunks[adjIndex+1:], " "))
 
 	missName := match[2]
+	if strings.Contains(missName, "absorbs") {
+		missName = "rune"
+	}
 	if missName == "misses" {
 		missName = "miss"
 	} else {
-		missName = ""
-		opts := []string{"parry", "dodge", "block", "shield block", "riposte", "absorb"}
+		opts := []string{"parry", "dodge", "block", "shield block", "riposte"}
 		for _, opt := range opts {
 			if strings.Contains(missName, opt) {
-				if opt == "absorb" {
-					missName = "rune"
-				}
 				missName = opt
 				break
 			}
 		}
-		if missName == "" {
-			missName = strings.ReplaceAll(match[2], "YOU ", "")
-		}
 	}
 
+	fmt.Println(missName, "!")
 	category := common.PopupCategoryMeleeMissIn
 	if strings.EqualFold(target, "you") {
 		target = tracker.PlayerName()
@@ -681,6 +678,9 @@ func onMyMeleeMiss(event time.Time, line string) {
 
 	missName := match[1]
 	missName = strings.ReplaceAll(missName, target, "")
+	if strings.Contains(missName, "absorbs") {
+		missName = "rune"
+	}
 
 	category := common.PopupCategoryMeleeMissOut
 	if strings.EqualFold(target, "you") {

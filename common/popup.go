@@ -1,5 +1,7 @@
 package common
 
+import "reflect"
+
 type PopupCategory int
 
 const (
@@ -27,57 +29,63 @@ const (
 	//PopupCategoryRuneCritIn
 	PopupCategoryRuneHitIn
 
-	PopupCategoryGlobalCritOut
-	PopupCategoryGlobalHitOut
-	PopupCategoryGlobalMissOut
-	PopupCategoryGlobalCritIn
-	PopupCategoryGlobalHitIn
-	PopupCategoryGlobalMissIn
+	PopupCategoryTotalDamageOut
+	PopupCategoryTotalDamageIn
+	PopupCategoryTotalHealOut
+	PopupCategoryTotalHealIn
 
 	PopupCategoryMax
 )
 
-// String returns the string representation of the PopupCategory.
-func (c PopupCategory) String() string {
-	switch c {
+func (e PopupCategory) String() string {
+	switch e {
 	case PopupCategoryMeleeCritOut:
-		return "MeleeCritOut"
+		return "Melee Crit Out"
 	case PopupCategoryMeleeHitOut:
-		return "MeleeHitOut"
+		return "Melee Hit Out"
 	case PopupCategoryMeleeMissOut:
-		return "MeleeMissOut"
+		return "Melee Miss Out"
 	case PopupCategoryMeleeCritIn:
-		return "MeleeCritIn"
+		return "Melee Crit In"
 	case PopupCategoryMeleeHitIn:
-		return "MeleeHitIn"
+		return "Melee Hit In"
 	case PopupCategoryMeleeMissIn:
-		return "MeleeMissIn"
+		return "Melee Miss In"
 	case PopupCategorySpellCritOut:
-		return "SpellCritOut"
+		return "Spell Crit Out"
 	case PopupCategorySpellHitOut:
-		return "SpellHitOut"
+		return "Spell Hit Out"
 	case PopupCategorySpellMissOut:
-		return "SpellMissOut"
+		return "Spell Miss Out"
 	case PopupCategorySpellCritIn:
-		return "SpellCritIn"
+		return "Spell Crit In"
 	case PopupCategorySpellHitIn:
-		return "SpellHitIn"
+		return "Spell Hit In"
 	case PopupCategorySpellMissIn:
-		return "SpellMissIn"
+		return "Spell Miss In"
 	case PopupCategoryHealCritOut:
-		return "HealCritOut"
+		return "Heal Crit Out"
 	case PopupCategoryHealHitOut:
-		return "HealHitOut"
+		return "Heal Hit Out"
 	case PopupCategoryHealCritIn:
-		return "HealCritIn"
+		return "Heal Crit In"
 	case PopupCategoryHealHitIn:
-		return "HealHitIn"
+		return "Heal Hit In"
 	case PopupCategoryRuneHitOut:
-		return "RuneHitOut"
+		return "Rune Hit Out"
 	case PopupCategoryRuneHitIn:
-		return "RuneHitIn"
+		return "Rune Hit In"
+	case PopupCategoryTotalDamageOut:
+		return "Total Damage Out"
+	case PopupCategoryTotalDamageIn:
+		return "Total Damage In"
+	case PopupCategoryTotalHealOut:
+		return "Total Heal Out"
+	case PopupCategoryTotalHealIn:
+		return "Total Heal In"
 	}
-	return "Unknown"
+	return "unknown"
+
 }
 
 type Direction int
@@ -93,24 +101,40 @@ const (
 	DirectionUpLeft
 )
 
-func (d Direction) String() string {
-	switch d {
-	case DirectionUp:
-		return "Up"
-	case DirectionUpRight:
-		return "UpRight"
-	case DirectionRight:
-		return "Right"
-	case DirectionDownRight:
-		return "DownRight"
-	case DirectionDown:
-		return "Down"
-	case DirectionDownLeft:
-		return "DownLeft"
-	case DirectionLeft:
-		return "Left"
-	case DirectionUpLeft:
-		return "UpLeft"
+func (e Direction) String() string {
+	typ := reflect.TypeOf(e)
+	for i := 0; i < typ.NumMethod(); i++ {
+		if typ.Method(i).Type.NumIn() == 1 && typ.Method(i).Type.In(0) == typ {
+			return typ.Method(i).Name
+		}
 	}
-	return "Unknown"
+	return "unknown"
+}
+
+func IsTotalDamageIn(category PopupCategory) bool {
+	return category == PopupCategoryMeleeCritIn ||
+		category == PopupCategoryMeleeHitIn ||
+		category == PopupCategorySpellCritIn ||
+		category == PopupCategorySpellHitIn ||
+		category == PopupCategorySpellMissIn
+}
+
+func IsTotalDamageOut(category PopupCategory) bool {
+	return category == PopupCategoryMeleeCritOut ||
+		category == PopupCategoryMeleeHitOut ||
+		category == PopupCategorySpellCritOut ||
+		category == PopupCategorySpellHitOut ||
+		category == PopupCategorySpellMissOut
+}
+
+func IsTotalHealIn(category PopupCategory) bool {
+	return category == PopupCategoryHealCritIn ||
+		category == PopupCategoryHealHitIn ||
+		category == PopupCategoryRuneHitIn
+}
+
+func IsTotalHealOut(category PopupCategory) bool {
+	return category == PopupCategoryHealCritOut ||
+		category == PopupCategoryHealHitOut ||
+		category == PopupCategoryRuneHitOut
 }

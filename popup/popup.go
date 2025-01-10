@@ -2,459 +2,55 @@ package popup
 
 import (
 	"fmt"
-	"image"
 	"image/color"
+	"strconv"
 	"sync"
+	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
+	"github.com/xackery/critsprinkler/bubble"
 	"github.com/xackery/critsprinkler/common"
 	"github.com/xackery/critsprinkler/config"
+	"github.com/xackery/critsprinkler/placement"
 	"github.com/xackery/critsprinkler/tracker"
 	"golang.org/x/exp/rand"
 )
 
 var (
-	mu            sync.RWMutex
-	popupSettings map[common.PopupCategory]*SettingProperty
-	popups        []*Popup
+	mu             sync.RWMutex
+	popups         []*Popup
+	tallyDuration  *time.Duration
+	isCommaEnabled *bool
 )
 
-type SettingProperty struct {
-	IsEnabled    *bool
-	Category     common.PopupCategory
-	categoryName string // Melee, Spell, etc
-	Title        string
-	rect         *image.Rectangle
-	lastSpawnX   float64
-	Color        *color.RGBA
-	font         text.Face
-	fontBorder   text.Face
-	Direction    *common.Direction
-}
-
 type Popup struct {
-	setting *SettingProperty
-	text    string
-	x, y    float64
-	vx, vy  float64
-	life    float64
-	maxLife float64
-	color   color.RGBA
-	isWave  bool
-	waveMax float64
-	waveMin float64
-	isSmall bool
+	category       common.PopupCategory
+	text           string
+	isTallyEnabled bool
+	currentDamage  int
+	targetDamage   int
+	baseX, baseY   *int
+	face           *text.Face
+	startX, startY float64
+	x, y           float64
+	vx, vy         float64
+	life           float64
+	maxLife        float64
+	color          color.RGBA
+	isWave         bool
+	waveMax        float64
+	waveMin        float64
+	isSmall        bool
+	tallyEndTime   time.Time
 }
 
-func New(cfg *config.CritSprinklerConfiguration, font text.Face) error {
+func New(cfg *config.CritSprinklerConfiguration) error {
 	mu.Lock()
 	defer mu.Unlock()
-	popupSettings = make(map[common.PopupCategory]*SettingProperty)
+	isCommaEnabled = &cfg.IsCommaEnabled
+	tallyDuration = &cfg.PopupTallyDuration
 
-	popupSettings[common.PopupCategoryGlobalCritOut] = &SettingProperty{
-		Category:   common.PopupCategoryGlobalCritOut,
-		font:       font,
-		fontBorder: font,
-		rect:       &cfg.GlobalCritOut,
-		Title:      "Global Crit Outgoing",
-		Color:      &cfg.GlobalCritOutColor,
-		Direction:  &cfg.GlobalCritOutDirection,
-	}
-
-	popupSettings[common.PopupCategoryGlobalHitOut] = &SettingProperty{
-		Category:     common.PopupCategoryGlobalHitOut,
-		Title:        "Global Hit Outgoing",
-		font:         font,
-		fontBorder:   font,
-		rect:         &cfg.GlobalHitOut,
-		categoryName: "Global",
-		Color:        &cfg.GlobalHitOutColor,
-		Direction:    &cfg.GlobalHitOutDirection,
-	}
-
-	popupSettings[common.PopupCategoryGlobalMissOut] = &SettingProperty{
-		Category:     common.PopupCategoryGlobalMissOut,
-		Title:        "Global Miss Outgoing",
-		font:         font,
-		fontBorder:   font,
-		rect:         &cfg.GlobalMissOut,
-		categoryName: "Global",
-		Color:        &cfg.GlobalMissOutColor,
-		Direction:    &cfg.GlobalMissOutDirection,
-	}
-
-	popupSettings[common.PopupCategoryGlobalCritIn] = &SettingProperty{
-		Category:     common.PopupCategoryGlobalCritIn,
-		Title:        "Global Crit Incoming",
-		font:         font,
-		fontBorder:   font,
-		rect:         &cfg.GlobalCritIn,
-		categoryName: "Global",
-		Color:        &cfg.GlobalCritInColor,
-		Direction:    &cfg.GlobalCritInDirection,
-	}
-
-	popupSettings[common.PopupCategoryGlobalHitIn] = &SettingProperty{
-		Category:     common.PopupCategoryGlobalHitIn,
-		Title:        "Global Hit Incoming",
-		font:         font,
-		fontBorder:   font,
-		rect:         &cfg.GlobalHitIn,
-		categoryName: "Global",
-		Color:        &cfg.GlobalHitInColor,
-		Direction:    &cfg.GlobalHitInDirection,
-	}
-
-	popupSettings[common.PopupCategoryGlobalMissIn] = &SettingProperty{
-		Category:     common.PopupCategoryGlobalMissIn,
-		Title:        "Global Miss Incoming",
-		font:         font,
-		fontBorder:   font,
-		rect:         &cfg.GlobalMissIn,
-		categoryName: "Global",
-		Color:        &cfg.GlobalMissInColor,
-		Direction:    &cfg.GlobalMissInDirection,
-	}
-
-	popupSettings[common.PopupCategoryMeleeCritOut] = &SettingProperty{
-		Category:     common.PopupCategoryMeleeCritOut,
-		Title:        "Melee Crit Outgoing",
-		font:         font,
-		fontBorder:   font,
-		rect:         &cfg.MeleeCritOut,
-		categoryName: "Melee",
-		Color:        &cfg.MeleeCritOutColor,
-		Direction:    &cfg.MeleeCritOutDirection,
-		IsEnabled:    &cfg.MeleeCritOutIsEnabled,
-	}
-
-	popupSettings[common.PopupCategoryMeleeHitOut] = &SettingProperty{
-		Category:     common.PopupCategoryMeleeHitOut,
-		Title:        "Melee Hit Outgoing",
-		font:         font,
-		fontBorder:   font,
-		rect:         &cfg.MeleeHitOut,
-		categoryName: "Melee",
-		Color:        &cfg.MeleeHitOutColor,
-		Direction:    &cfg.MeleeHitOutDirection,
-		IsEnabled:    &cfg.MeleeHitOutIsEnabled,
-	}
-
-	popupSettings[common.PopupCategoryMeleeMissOut] = &SettingProperty{
-		Category:     common.PopupCategoryMeleeMissOut,
-		Title:        "Melee Miss Outgoing",
-		font:         font,
-		fontBorder:   font,
-		rect:         &cfg.MeleeMissOut,
-		categoryName: "Melee",
-		Color:        &cfg.MeleeMissOutColor,
-		Direction:    &cfg.MeleeMissOutDirection,
-		IsEnabled:    &cfg.MeleeMissOutIsEnabled,
-	}
-
-	popupSettings[common.PopupCategoryMeleeCritIn] = &SettingProperty{
-		Category:     common.PopupCategoryMeleeCritIn,
-		Title:        "Melee Crit Incoming",
-		font:         font,
-		fontBorder:   font,
-		rect:         &cfg.MeleeCritIn,
-		categoryName: "Melee",
-		Color:        &cfg.MeleeCritInColor,
-		Direction:    &cfg.MeleeCritInDirection,
-		IsEnabled:    &cfg.MeleeCritInIsEnabled,
-	}
-
-	popupSettings[common.PopupCategoryMeleeHitIn] = &SettingProperty{
-		Category:     common.PopupCategoryMeleeHitIn,
-		Title:        "Melee Hit Incoming",
-		font:         font,
-		fontBorder:   font,
-		rect:         &cfg.MeleeHitIn,
-		categoryName: "Melee",
-		Color:        &cfg.MeleeHitInColor,
-		Direction:    &cfg.MeleeHitInDirection,
-		IsEnabled:    &cfg.MeleeHitInIsEnabled,
-	}
-
-	popupSettings[common.PopupCategoryMeleeMissIn] = &SettingProperty{
-		Category:     common.PopupCategoryMeleeMissIn,
-		Title:        "Melee Miss Incoming",
-		font:         font,
-		fontBorder:   font,
-		rect:         &cfg.MeleeMissIn,
-		categoryName: "Melee",
-		Color:        &cfg.MeleeMissInColor,
-		Direction:    &cfg.MeleeMissInDirection,
-		IsEnabled:    &cfg.MeleeMissInIsEnabled,
-	}
-
-	popupSettings[common.PopupCategorySpellCritOut] = &SettingProperty{
-		Category:     common.PopupCategorySpellCritOut,
-		Title:        "Spell Crit Outgoing",
-		font:         font,
-		fontBorder:   font,
-		rect:         &cfg.SpellCritOut,
-		categoryName: "Spell",
-		Color:        &cfg.SpellCritOutColor,
-		Direction:    &cfg.SpellCritOutDirection,
-		IsEnabled:    &cfg.SpellCritOutIsEnabled,
-	}
-
-	popupSettings[common.PopupCategorySpellHitOut] = &SettingProperty{
-		Category:     common.PopupCategorySpellHitOut,
-		Title:        "Spell Hit Outgoing",
-		font:         font,
-		fontBorder:   font,
-		rect:         &cfg.SpellHitOut,
-		categoryName: "Spell",
-		Color:        &cfg.SpellHitOutColor,
-		Direction:    &cfg.SpellHitOutDirection,
-		IsEnabled:    &cfg.SpellHitOutIsEnabled,
-	}
-
-	popupSettings[common.PopupCategorySpellMissOut] = &SettingProperty{
-		Category:     common.PopupCategorySpellMissOut,
-		Title:        "Spell Miss Outgoing",
-		font:         font,
-		fontBorder:   font,
-		rect:         &cfg.SpellMissOut,
-		categoryName: "Spell",
-		Color:        &cfg.SpellMissOutColor,
-		Direction:    &cfg.SpellMissOutDirection,
-		IsEnabled:    &cfg.SpellMissOutIsEnabled,
-	}
-
-	popupSettings[common.PopupCategorySpellCritIn] = &SettingProperty{
-		Category:     common.PopupCategorySpellCritIn,
-		Title:        "Spell Crit Incoming",
-		font:         font,
-		fontBorder:   font,
-		rect:         &cfg.SpellCritIn,
-		categoryName: "Spell",
-		Color:        &cfg.SpellCritInColor,
-		Direction:    &cfg.SpellCritInDirection,
-		IsEnabled:    &cfg.SpellCritInIsEnabled,
-	}
-
-	popupSettings[common.PopupCategorySpellHitIn] = &SettingProperty{
-		Category:     common.PopupCategorySpellHitIn,
-		Title:        "Spell Hit Incoming",
-		font:         font,
-		fontBorder:   font,
-		rect:         &cfg.SpellHitIn,
-		categoryName: "Spell",
-		Color:        &cfg.SpellHitInColor,
-		Direction:    &cfg.SpellHitInDirection,
-		IsEnabled:    &cfg.SpellHitInIsEnabled,
-	}
-
-	popupSettings[common.PopupCategorySpellMissIn] = &SettingProperty{
-		Category:     common.PopupCategorySpellMissIn,
-		Title:        "Spell Miss Incoming",
-		font:         font,
-		fontBorder:   font,
-		rect:         &cfg.SpellMissIn,
-		categoryName: "Spell",
-		Color:        &cfg.SpellMissInColor,
-		Direction:    &cfg.SpellMissInDirection,
-		IsEnabled:    &cfg.SpellMissInIsEnabled,
-	}
-
-	popupSettings[common.PopupCategoryHealCritOut] = &SettingProperty{
-		Category:     common.PopupCategoryHealCritOut,
-		Title:        "Heal Crit Outgoing",
-		font:         font,
-		fontBorder:   font,
-		rect:         &cfg.HealCritOut,
-		categoryName: "Heal",
-		Color:        &cfg.HealCritOutColor,
-		Direction:    &cfg.HealCritOutDirection,
-		IsEnabled:    &cfg.HealCritOutIsEnabled,
-	}
-
-	popupSettings[common.PopupCategoryHealHitOut] = &SettingProperty{
-		Category:     common.PopupCategoryHealHitOut,
-		Title:        "Heal Hit Outgoing",
-		font:         font,
-		fontBorder:   font,
-		rect:         &cfg.HealHitOut,
-		categoryName: "Heal",
-		Color:        &cfg.HealHitOutColor,
-		Direction:    &cfg.HealHitOutDirection,
-		IsEnabled:    &cfg.HealHitOutIsEnabled,
-	}
-
-	popupSettings[common.PopupCategoryHealCritIn] = &SettingProperty{
-		Category:     common.PopupCategoryHealCritIn,
-		Title:        "Heal Crit Incoming",
-		font:         font,
-		fontBorder:   font,
-		rect:         &cfg.HealCritIn,
-		categoryName: "Heal",
-		Color:        &cfg.HealCritInColor,
-		Direction:    &cfg.HealCritInDirection,
-		IsEnabled:    &cfg.HealCritInIsEnabled,
-	}
-
-	popupSettings[common.PopupCategoryHealHitIn] = &SettingProperty{
-		Category:     common.PopupCategoryHealHitIn,
-		Title:        "Heal Hit Incoming",
-		font:         font,
-		fontBorder:   font,
-		rect:         &cfg.HealHitIn,
-		categoryName: "Heal",
-		Color:        &cfg.HealHitInColor,
-		Direction:    &cfg.HealHitInDirection,
-		IsEnabled:    &cfg.HealHitInIsEnabled,
-	}
-
-	popupSettings[common.PopupCategoryRuneHitOut] = &SettingProperty{
-		Category:     common.PopupCategoryRuneHitOut,
-		Title:        "Rune Hit Outgoing",
-		font:         font,
-		fontBorder:   font,
-		rect:         &cfg.RuneHitOut,
-		categoryName: "Rune",
-		Color:        &cfg.RuneHitOutColor,
-		Direction:    &cfg.RuneHitOutDirection,
-		IsEnabled:    &cfg.RuneHitOutIsEnabled,
-	}
-
-	popupSettings[common.PopupCategoryRuneHitIn] = &SettingProperty{
-		Category:     common.PopupCategoryRuneHitIn,
-		Title:        "Rune Hit Incoming",
-		font:         font,
-		fontBorder:   font,
-		rect:         &cfg.RuneHitIn,
-		categoryName: "Rune",
-		Color:        &cfg.RuneHitInColor,
-		Direction:    &cfg.RuneHitInDirection,
-		IsEnabled:    &cfg.RuneHitInIsEnabled,
-	}
-
-	return nil
-}
-
-func SettingByCategory(category common.PopupCategory) *SettingProperty {
-	popup, ok := popupSettings[category]
-	if !ok {
-		return nil
-	}
-
-	return popup
-}
-
-func SetSettingPositionByCategory(category common.PopupCategory, rect image.Rectangle) error {
-	setting, ok := popupSettings[category]
-	if !ok {
-		return fmt.Errorf("setting not found for %d", category)
-	}
-	setting.rect.Min = rect.Min
-	setting.rect.Max = rect.Max
-
-	switch category {
-	case common.PopupCategoryGlobalCritOut:
-		subCats := []common.PopupCategory{common.PopupCategoryMeleeCritOut, common.PopupCategorySpellCritOut, common.PopupCategoryHealCritOut}
-		for _, subCat := range subCats {
-			subSetting, ok := popupSettings[subCat]
-			if !ok {
-				return fmt.Errorf("setting not found for %d", subCat)
-			}
-			subSetting.rect.Min = rect.Min
-			subSetting.rect.Max = rect.Max
-		}
-	case common.PopupCategoryGlobalHitOut:
-		subCats := []common.PopupCategory{common.PopupCategoryMeleeHitOut, common.PopupCategorySpellHitOut, common.PopupCategoryHealHitOut, common.PopupCategoryRuneHitOut}
-		for _, subCat := range subCats {
-			subSetting, ok := popupSettings[subCat]
-			if !ok {
-				return fmt.Errorf("setting not found for %d", subCat)
-			}
-			subSetting.rect.Min = rect.Min
-			subSetting.rect.Max = rect.Max
-		}
-	case common.PopupCategoryGlobalMissOut:
-		subCats := []common.PopupCategory{common.PopupCategoryMeleeMissOut, common.PopupCategorySpellMissOut}
-		for _, subCat := range subCats {
-			subSetting, ok := popupSettings[subCat]
-			if !ok {
-				return fmt.Errorf("setting not found for %d", subCat)
-			}
-			subSetting.rect.Min = rect.Min
-			subSetting.rect.Max = rect.Max
-		}
-	case common.PopupCategoryGlobalCritIn:
-		subCats := []common.PopupCategory{common.PopupCategoryMeleeCritIn, common.PopupCategorySpellCritIn, common.PopupCategoryHealCritIn}
-		for _, subCat := range subCats {
-			subSetting, ok := popupSettings[subCat]
-			if !ok {
-				return fmt.Errorf("setting not found for %d", subCat)
-			}
-			subSetting.rect.Min = rect.Min
-			subSetting.rect.Max = rect.Max
-		}
-	case common.PopupCategoryGlobalHitIn:
-		subCats := []common.PopupCategory{common.PopupCategoryMeleeHitIn, common.PopupCategorySpellHitIn, common.PopupCategoryHealHitIn, common.PopupCategoryRuneHitIn}
-		for _, subCat := range subCats {
-			subSetting, ok := popupSettings[subCat]
-			if !ok {
-				return fmt.Errorf("setting not found for %d", subCat)
-			}
-			subSetting.rect.Min = rect.Min
-			subSetting.rect.Max = rect.Max
-		}
-	case common.PopupCategoryGlobalMissIn:
-		subCats := []common.PopupCategory{common.PopupCategoryMeleeMissIn, common.PopupCategorySpellMissIn}
-		for _, subCat := range subCats {
-			subSetting, ok := popupSettings[subCat]
-			if !ok {
-				return fmt.Errorf("setting not found for %d", subCat)
-			}
-			subSetting.rect.Min = rect.Min
-			subSetting.rect.Max = rect.Max
-		}
-	}
-
-	return nil
-}
-
-func SetSettingColorByCategory(category common.PopupCategory, color color.RGBA) error {
-	setting, ok := popupSettings[category]
-	if !ok {
-		return fmt.Errorf("setting not found for %d", category)
-	}
-	setting.Color.R = color.R
-	setting.Color.G = color.G
-	setting.Color.B = color.B
-	setting.Color.A = color.A
-	fmt.Println("setting color", category, color)
-	return nil
-}
-
-func SettingPositionByCategory(category common.PopupCategory) (image.Rectangle, error) {
-	mu.RLock()
-	defer mu.RUnlock()
-	setting, ok := popupSettings[category]
-	if !ok {
-		return image.Rectangle{}, fmt.Errorf("setting not found for %d", category)
-	}
-	rect := image.Rectangle{
-		Min: setting.rect.Min,
-		Max: setting.rect.Max,
-	}
-	return rect, nil
-}
-
-func SetSettingDirection(category common.PopupCategory, direction common.Direction) error {
-	mu.Lock()
-	defer mu.Unlock()
-	setting, ok := popupSettings[category]
-	if !ok {
-		return fmt.Errorf("setting not found for %d", category)
-	}
-
-	*setting.Direction = direction
 	return nil
 }
 
@@ -482,6 +78,15 @@ func randomSpawnRange(lastSpawnX, minPos, maxPos, tolerance, maxAttempts int) fl
 
 // Update is called by ebiten to update the popup animations
 func Update() {
+
+	spawns := bubble.Spawns()
+	for _, event := range spawns {
+		err := spawn(event)
+		if err != nil {
+			fmt.Println("spawn error:", err)
+		}
+	}
+
 	for i := len(popups) - 1; i >= 0; i-- {
 		popup := popups[i]
 
@@ -489,10 +94,23 @@ func Update() {
 		popup.x += popup.vx
 		popup.life -= 1
 
-		// Reverse velocity after reaching the hover point
-		if popup.life < popup.maxLife*0.5 && popup.vy < 0 {
-			popup.vy = -popup.vy * 0.2 // Slows down
+		if popup.currentDamage < popup.targetDamage {
+			delta := int((float64(popup.targetDamage-popup.currentDamage) * 0.5))
+			if delta < 1 {
+				delta = 1
+			}
+			popup.currentDamage += delta
+
+			popup.text = strconv.Itoa(popup.currentDamage)
+			if *isCommaEnabled && popup.currentDamage > 0 {
+				popup.text = commaFormat(popup.currentDamage)
+			}
 		}
+
+		// Reverse velocity after reaching the hover point
+		/* if !popup.isTallyEnabled && popup.life < popup.maxLife*0.5 && popup.vy < 0 {
+			popup.vy = -popup.vy * 0.2 // Slows down
+		} */
 
 		// Remove popups that have expired
 		if popup.life <= 0 {
@@ -511,34 +129,36 @@ func Draw(screen *ebiten.Image) {
 		offset := 2
 
 		op := &text.DrawOptions{}
-		op.GeoM.Translate(float64(popup.setting.rect.Min.X)+popup.x+float64(offset), float64(popup.setting.rect.Min.Y)+popup.y+float64(offset))
+		op.GeoM.Translate(float64(*popup.baseX)+popup.x+float64(offset), float64(*popup.baseY)+popup.y+float64(offset))
 		op.ColorScale.ScaleWithColor(shadow)
-		text.Draw(screen, popup.text, popup.setting.font, op)
+		text.Draw(screen, popup.text, *popup.face, op)
 		op = &text.DrawOptions{}
-		op.GeoM.Translate(float64(popup.setting.rect.Min.X)+popup.x, float64(popup.setting.rect.Min.Y)+popup.y)
+		op.GeoM.Translate(float64(*popup.baseX)+popup.x, float64(*popup.baseY)+popup.y)
 		op.ColorScale.ScaleWithColor(col)
 
-		text.Draw(screen, popup.text, popup.setting.fontBorder, op)
+		text.Draw(screen, popup.text, *popup.face, op)
 	}
 }
 
-func Spawn(event *common.DamageEvent) error {
+func spawn(event *common.DamageEvent) error {
 
-	setting := SettingByCategory(event.Category)
+	setting := placement.ByCategory(event.Category)
 	if setting == nil {
 		return fmt.Errorf("no setting found for %d", event.Category)
 	}
 
-	if !*setting.IsEnabled {
-		return nil
+	if setting.IsVisible == 0 {
+		return spawnTotal(event)
 	}
 
 	spellColor := color.RGBA{255, 255, 255, 255}
 
-	spellColor.R = setting.Color.R
-	spellColor.G = setting.Color.G
-	spellColor.B = setting.Color.B
-	spellColor.A = setting.Color.A
+	spellColor.R = setting.FontColor.R
+	spellColor.G = setting.FontColor.G
+	spellColor.B = setting.FontColor.B
+	spellColor.A = setting.FontColor.A
+
+	spellColor = color.RGBA{100, 100, 255, 255}
 
 	/*
 		spellColor, ok := spellColors[event.SpellName]
@@ -584,9 +204,32 @@ func Spawn(event *common.DamageEvent) error {
 		return nil
 	}
 
+	if setting.IsTallyEnabled == 1 {
+		for i := 0; i < len(popups); i++ {
+			popup := popups[i]
+			if time.Now().After(popup.tallyEndTime) {
+				continue
+			}
+			if popup.category != event.Category {
+				continue
+			}
+
+			val, err := strconv.Atoi(event.Damage)
+			if err != nil {
+				return nil
+			}
+
+			popup.targetDamage += val
+			popup.x -= popup.vx
+			popup.y -= popup.vy
+			popup.life += 10
+			return spawnTotal(event)
+		}
+	}
+
 	vx := float64(0)
 	vy := float64(-0.5 - rand.Float64() - (rand.Float64() / 2))
-	switch *setting.Direction {
+	switch setting.Direction {
 	case common.DirectionUp:
 		vy = -0.5 - rand.Float64() - (rand.Float64() / 2)
 		vx = 0
@@ -615,17 +258,62 @@ func Spawn(event *common.DamageEvent) error {
 
 	fmt.Printf("%s->%s->%s (%s) %s %s\n", event.Source, event.Type, event.Target, event.SpellName, event.Damage, event.Category.String())
 
-	popup := &Popup{
-		setting: setting,
-		text:    event.Damage,
-		x:       randomSpawnRange(int(setting.lastSpawnX), 0, setting.rect.Dx()-50, setting.rect.Dx()/4, 0),
-		y:       randomSpawnRange(int(setting.lastSpawnX), 0, setting.rect.Dy()-50, setting.rect.Dy()/4, 0),
-		vx:      vx,
-		vy:      vy,
-		life:    240,
-		maxLife: 240,
-		color:   spellColor,
+	val, err := strconv.Atoi(event.Damage)
+	if err != nil {
+		val = 0
 	}
+	damage := event.Damage
+	if *isCommaEnabled && val > 0 {
+		damage = commaFormat(val)
+	}
+
+	popup := &Popup{
+		category:      event.Category,
+		text:          damage,
+		currentDamage: val,
+		targetDamage:  val,
+		baseX:         &setting.WindowRect.Min.X,
+		baseY:         &setting.WindowRect.Min.Y,
+		face:          &setting.FontFace,
+		x:             randomSpawnRange(int(setting.LastSpawnX), 0, setting.WindowRect.Dx()-50, setting.WindowRect.Dx()/4, 0),
+		y:             randomSpawnRange(int(setting.LastSpawnX), 0, setting.WindowRect.Dy()-50, setting.WindowRect.Dy()/4, 0),
+		vx:            vx,
+		vy:            vy,
+		life:          240,
+		maxLife:       240,
+		tallyEndTime:  time.Now().Add(*tallyDuration),
+		color:         spellColor,
+	}
+	if setting.IsTallyEnabled == 1 {
+		popup.maxLife += 1000
+		popup.life += 1000
+		switch setting.Direction {
+		case common.DirectionUp:
+			popup.vy = -0.2
+		case common.DirectionDown:
+			popup.vy = 0.2
+		case common.DirectionLeft:
+			popup.vx = -0.4
+		case common.DirectionRight:
+			popup.vx = 0.4
+		case common.DirectionUpLeft:
+			popup.vx = -0.2
+			popup.vy = -0.2
+		case common.DirectionUpRight:
+			popup.vx = 0.2
+			popup.vy = -0.2
+		case common.DirectionDownLeft:
+			popup.vx = -0.2
+			popup.vy = 0.2
+		case common.DirectionDownRight:
+			popup.vx = 0.2
+			popup.vy = 0.2
+		}
+		popup.x = float64(setting.WindowRect.Dx() / 2)
+		popup.y = float64(setting.WindowRect.Dy() / 2)
+	}
+	popup.startX = popup.x
+	popup.startY = popup.y
 	if popup.isSmall || event.Origin == "melee" {
 		//popup.y += 200
 		popup.life = 250
@@ -638,8 +326,9 @@ func Spawn(event *common.DamageEvent) error {
 		popup.waveMax = popup.y + 10
 		popup.waveMin = popup.y - 10
 	}
+
 	popups = append(popups, popup)
-	return nil
+	return spawnTotal(event)
 }
 
 // ConfigUpdate updates the popup configuration
@@ -648,31 +337,59 @@ func ConfigUpdate(cfg *config.CritSprinklerConfiguration) {
 	defer mu.Unlock()
 }
 
-// IsGlobalCategory returns true if the category is a global category
-func IsGlobalCategory(category common.PopupCategory) bool {
-	return category == common.PopupCategoryGlobalCritOut ||
-		category == common.PopupCategoryGlobalHitOut ||
-		category == common.PopupCategoryGlobalMissOut ||
-		category == common.PopupCategoryGlobalCritIn ||
-		category == common.PopupCategoryGlobalHitIn ||
-		category == common.PopupCategoryGlobalMissIn
-}
-
-// GlobalCategoryToCategory returns a list of categories based on the global category
-func GlobalCategoryToCategory(category common.PopupCategory) []common.PopupCategory {
-	switch category {
-	case common.PopupCategoryGlobalCritOut:
-		return []common.PopupCategory{common.PopupCategoryMeleeCritOut, common.PopupCategorySpellCritOut, common.PopupCategoryHealCritOut}
-	case common.PopupCategoryGlobalHitOut:
-		return []common.PopupCategory{common.PopupCategoryMeleeHitOut, common.PopupCategorySpellHitOut, common.PopupCategoryHealHitOut, common.PopupCategoryRuneHitOut}
-	case common.PopupCategoryGlobalMissOut:
-		return []common.PopupCategory{common.PopupCategoryMeleeMissOut, common.PopupCategorySpellMissOut}
-	case common.PopupCategoryGlobalCritIn:
-		return []common.PopupCategory{common.PopupCategoryMeleeCritIn, common.PopupCategorySpellCritIn, common.PopupCategoryHealCritIn}
-	case common.PopupCategoryGlobalHitIn:
-		return []common.PopupCategory{common.PopupCategoryMeleeHitIn, common.PopupCategorySpellHitIn, common.PopupCategoryHealHitIn, common.PopupCategoryRuneHitIn}
-	case common.PopupCategoryGlobalMissIn:
-		return []common.PopupCategory{common.PopupCategoryMeleeMissIn, common.PopupCategorySpellMissIn}
+func spawnTotal(event *common.DamageEvent) error {
+	if common.IsTotalDamageOut(event.Category) {
+		fmt.Println("total damage out")
+		event.Category = common.PopupCategoryTotalDamageOut
+		return spawn(event)
+	}
+	if common.IsTotalDamageIn(event.Category) {
+		event.Category = common.PopupCategoryTotalDamageIn
+		return spawn(event)
+	}
+	if common.IsTotalHealOut(event.Category) {
+		event.Category = common.PopupCategoryTotalHealOut
+		return spawn(event)
+	}
+	if common.IsTotalHealIn(event.Category) {
+		event.Category = common.PopupCategoryTotalHealIn
+		return spawn(event)
 	}
 	return nil
+}
+
+func commaFormat(num int) string {
+	if num < 1000 {
+		return strconv.Itoa(num)
+	}
+	in := strconv.Itoa(num)
+	n := len(in) % 3
+	out := in[:n]
+	for i := n; i < len(in); i += 3 {
+		if len(out) > 0 {
+			out += ","
+		}
+		out += in[i : i+3]
+	}
+	return out
+}
+
+func (p *Popup) Clone() *Popup {
+	return &Popup{
+		text:          p.text,
+		currentDamage: p.currentDamage,
+		targetDamage:  p.targetDamage,
+		x:             p.x,
+		y:             p.y,
+		vx:            p.vx,
+		vy:            p.vy,
+		life:          p.life,
+		maxLife:       p.maxLife,
+		color:         p.color,
+		isWave:        p.isWave,
+		waveMax:       p.waveMax,
+		waveMin:       p.waveMin,
+		isSmall:       p.isSmall,
+		tallyEndTime:  p.tallyEndTime,
+	}
 }

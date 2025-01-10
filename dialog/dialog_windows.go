@@ -1,4 +1,4 @@
-package main
+package dialog
 
 import (
 	"fmt"
@@ -24,14 +24,14 @@ func MsgBox(title, message string) error {
 }
 
 // FileDialogBox displays a file dialog box for selecting a file.
-func FileDialogBox(path string) error {
+func FileDialogBox(path string) (string, error) {
 	var err error
 
 	dia := new(walk.FileDialog)
 
 	curDir := "."
-	if cfg.LogPath != "" {
-		curDir = filepath.Dir(cfg.LogPath)
+	if path != "" {
+		curDir = filepath.Dir(path)
 	} else {
 		curDir, err = os.Getwd()
 		if err != nil {
@@ -45,19 +45,19 @@ func FileDialogBox(path string) error {
 
 	ok, err := dia.ShowOpen(nil)
 	if err != nil {
-		return fmt.Errorf("showOpen: %w", err)
+		return "", fmt.Errorf("showOpen: %w", err)
 	}
 
 	if !ok {
-		return nil
+		return "", fmt.Errorf("cancelled")
 	}
 
-	cfg.LogPath = dia.FilePath
-	err = tracker.SetNewPath(cfg.LogPath)
+	path = dia.FilePath
+	err = tracker.SetNewPath(path)
 	if err != nil {
-		return fmt.Errorf("setNewPath: %w", err)
+		return "", fmt.Errorf("setNewPath: %w", err)
 	}
 
-	fmt.Println("Selected file:", cfg.LogPath)
-	return nil
+	fmt.Println("Selected file:", path)
+	return path, nil
 }
